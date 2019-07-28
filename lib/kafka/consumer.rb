@@ -53,6 +53,7 @@ module Kafka
       @session_timeout = session_timeout
       @fetcher = fetcher
       @heartbeat = heartbeat
+      @fetcher_max_poll_interval = 1 # seconds
 
       @pauses = Hash.new {|h, k|
         h[k] = Hash.new {|h2, k2|
@@ -192,6 +193,7 @@ module Kafka
     #   returning messages from each broker.
     # @param max_wait_time [Integer, Float] the maximum duration of time to wait before
     #   returning messages from each broker, in seconds.
+    # @param max_poll_interval [Integer,Float] the time to sleep between polls
     # @param automatically_mark_as_processed [Boolean] whether to automatically
     #   mark a message as successfully processed when the block returns
     #   without an exception. Once marked successful, the offsets of processed
@@ -201,12 +203,13 @@ module Kafka
     #   The original exception will be returned by calling `#cause` on the
     #   {Kafka::ProcessingError} instance.
     # @return [nil]
-    def each_message(min_bytes: 1, max_bytes: 10485760, max_wait_time: 1, automatically_mark_as_processed: true)
+    def each_message(min_bytes: 1, max_bytes: 10485760, max_wait_time: 1, max_poll_interval: 1, automatically_mark_as_processed: true)
       @fetcher.configure(
         min_bytes: min_bytes,
         max_bytes: max_bytes,
         max_wait_time: max_wait_time,
       )
+      @fetcher_max_poll_interval = max_poll_interval
 
       consumer_loop do
         batches = fetch_batches
@@ -280,6 +283,7 @@ module Kafka
     #   returning messages from each broker.
     # @param max_wait_time [Integer, Float] the maximum duration of time to wait before
     #   returning messages from each broker, in seconds.
+    # @param max_poll_interval [Integer,Float] the time to sleep between polls
     # @param automatically_mark_as_processed [Boolean] whether to automatically
     #   mark a batch's messages as successfully processed when the block returns
     #   without an exception. Once marked successful, the offsets of processed
@@ -289,12 +293,13 @@ module Kafka
     #   The original exception will be returned by calling `#cause` on the
     #   {Kafka::ProcessingError} instance.
     # @return [nil]
-    def each_batch(min_bytes: 1, max_bytes: 10485760, max_wait_time: 1, automatically_mark_as_processed: true)
+    def each_batch(min_bytes: 1, max_bytes: 10485760, max_wait_time: 1, max_poll_interval: 1, automatically_mark_as_processed: true)
       @fetcher.configure(
         min_bytes: min_bytes,
         max_bytes: max_bytes,
         max_wait_time: max_wait_time,
       )
+      @fetcher_max_poll_interval = max_poll_interval
 
       consumer_loop do
         batches = fetch_batches
@@ -525,7 +530,7 @@ module Kafka
 
       if !@fetcher.data?
         @logger.debug "No batches to process"
-        sleep 2
+        sleep @fetcher_max_poll_interval
         []
       else
         tag, message = @fetcher.poll
